@@ -1,0 +1,13 @@
+{
+  "vendor": "thermo",
+  "rows": [
+    {
+      "target": "CD4",
+      "species": "Mouse",
+      "laser": "uv",
+      "catalog": "Q10092",
+      "size": "100 µg",
+      "price": 624.00
+    }
+  ]
+}

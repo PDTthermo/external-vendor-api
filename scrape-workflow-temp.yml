@@ -1,0 +1,33 @@
+name: Monthly Antibody Scrape
+
+on:
+  schedule:
+    - cron: '0 0 * * 5' # Every Friday at 12am UTC (adjust to monthly if preferred)
+  workflow_dispatch: # Allows manual run
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run scraper
+        run: node crawl-all.js
+
+      - name: Commit updated data
+        run: |
+          git config --global user.name 'Auto Scraper Bot'
+          git config --global user.email 'scraper@github.com'
+          git add data/
+          git commit -m "Auto scrape: update data folder" || echo "No changes"
+          git push
