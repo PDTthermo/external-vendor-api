@@ -1,69 +1,63 @@
-const express = require("express");
-const path = require("path");
-const fs = require("fs");
-const cors = require("cors");
-
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const runCrawl = require('./crawl-all');
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 1000;
 
-app.use(cors());
 app.use(express.json());
-app.use(express.static("public"));
 
-// Serve scraped JSON from /data
-app.use("/data", express.static(path.join(__dirname, "data")));
-
-app.get("/", (req, res) => {
-  res.send("Antibody API is live!");
+// Root route
+app.get('/', (req, res) => {
+  res.send('Antibody API is live!');
 });
 
-// Compare endpoint (simple version)
-app.get("/compare", async (req, res) => {
-  const { target, species, laser } = req.query;
-
-  if (!target || !species || !laser) {
-    return res.status(400).json({ error: "target, species, and laser required" });
+// Endpoint: /compare — uses static files from /data
+app.get('/compare', async (req, res) => {
+  const { vendor, target, species, laser } = req.query;
+  if (!vendor || !target || !species || !laser) {
+    return res.status(400).json({ error: 'Missing query parameters' });
   }
 
-  const vendors = ["bd", "biolegend", "thermo"];
-  let combined = [];
+  const filename = `${vendor}-${target}-${species}-${laser}.json`.replace(/\s+/g, '');
+  const filepath = path.join(__dirname, 'data', filename);
 
-  for (const vendor of vendors) {
-    const filePath = path.join(__dirname, "data", `${vendor}-${target}-${species}-${laser}.json`);
-    if (fs.existsSync(filePath)) {
-      const vendorData = JSON.parse(fs.readFileSync(filePath));
-      combined = combined.concat(
-        vendorData.rows.map((r) => ({ ...r, vendor }))
-      );
-    }
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: 'No data file found', file: filename });
   }
 
-  res.json({ total: combined.length, rows: combined });
+  try {
+    const file = fs.readFileSync(filepath, 'utf8');
+    const rows = JSON.parse(file);
+    return res.json({ total: rows.length, rows });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to read file', details: err.message });
+  }
 });
 
-// Match by catalog number
-app.post("/match-catalog", (req, res) => {
-  const { catalogNumbers } = req.body;
-  if (!Array.isArray(catalogNumbers)) {
-    return res.status(400).json({ error: "catalogNumbers must be an array" });
+// Endpoint: /table — performs live scraping
+app.get('/table', async (req, res) => {
+  const { vendor, target, species, laser, debug, nocache } = req.query;
+  if (!vendor || !target || !species || !laser) {
+    return res.status(400).json({ error: 'Missing query parameters' });
   }
 
-  const vendorFiles = fs.readdirSync(path.join(__dirname, "data")).filter(f => f.endsWith(".json"));
-  const matches = [];
-
-  for (const file of vendorFiles) {
-    const filePath = path.join(__dirname, "data", file);
-    const data = JSON.parse(fs.readFileSync(filePath));
-    for (const row of data.rows) {
-      if (catalogNumbers.includes(row.catalog)) {
-        matches.push({ ...row, source: file });
-      }
-    }
+  try {
+    const result = await runCrawl({
+      vendor,
+      target,
+      species,
+      laser,
+      debug: debug === '1',
+      useCache: nocache !== '1', // true unless nocache=1
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Scraping failed', details: err.message });
   }
-
-  res.json({ total: matches.length, matches });
 });
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
